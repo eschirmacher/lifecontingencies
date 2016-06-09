@@ -41,6 +41,54 @@ dxt <- function(object, x, t, decrement) {
   return(out)
 }
 
+.interpolate <- function(object, x, type = "linear") {
+  idx <- function(w,z){
+    ans <- length(w)
+    for(i in 1:length(w)) ans[i] <- which(w[i] == z)
+    return(ans)
+  }
+
+  out <- rep(NA, length(x))
+
+  x.min <- min(object@x)
+  x.max <- max(object@x)
+  age <- c(x.min-1, object@x, x.max+1)
+  pop <- c(NA, object@lx, 0)
+
+  x <- ifelse(x < x.min, x.min-1, x)
+  x <- ifelse(x > x.max+1, x.max+1, x)
+
+  x.lo <- floor(x)
+  x.hi <- ceiling(x)
+  t <- x - x.lo
+
+  lx.lo <- pop[idx(x.lo, age)]
+  lx.hi <- pop[idx(x.hi, age)]
+
+  if(type == "linear")
+    out <- (1 - t) * lx.lo + t * lx.hi
+
+  if(type == "constant force") {
+    tmp <- ifelse(lx.hi == 0,
+                  (1 - t) * lx.lo + t * lx.hi,
+                  (1 - t) * log(lx.lo) + t * log(lx.hi))
+    out <- ifelse(lx.hi == 0,
+                  tmp,
+                  exp(tmp))
+  }
+
+  if(type == "hyperbolic") {
+    tmp <- ifelse(lx.hi == 0,
+                  (1 - t) * lx.lo + t * lx.hi,
+                  (1 - t) / lx.lo + t / lx.hi)
+    out <- ifelse(lx.hi == 0,
+                  tmp,
+                  1 / tmp)
+  }
+
+  return(out)
+}
+
 #survival probability between age x and x+t
 pxt <- function(object, x, t, fractional = "linear", decrement)
 {
@@ -64,75 +112,10 @@ pxt <- function(object, x, t, fractional = "linear", decrement)
     stop("Check x or t domain")
   if (missing(t))
     t = 1 #default 1
-  omega = getOmega(object)
-  #if the starting age is fractional apply probability laws
-  if ((x - floor(x)) > 0) {
-    integerAge = floor(x)
-    excess = x - floor(x)
-    out = pxt(
-      object = object, x = integerAge, t = excess + t, decrement = decrement
-    ) / pxt(
-      object = object, x = integerAge,t = excess, decrement = decrement
-    )
-    return(out)
-  }
-  #Rosa Corrales Patch
- # if ((object@lx[omega] > 0) &&
-  #    (x + t) == (omega + 1)) {
-  #  out <- 1 / object@lx[which(object@x == x)]
-  #} else {
-    #before x+t>=omega
-    if ((x + t) >= omega + 1)
-      return(0)
 
-  if((x + t) > omega){ # x + t is between last lx > 0 and 0
-
-    z <- t %% 1 #the fraction of year
-    #linearly interpolates if fractional age
-    pl <-
-      object@lx[which(object@x == floor(t + x))] / object@lx[which(object@x ==
-                                                                     x)] # Kevin Owens: fix on this line, moving it out of the linear if statement so it can be used in other assumptions
-    if (fractional == "linear") {
-      ph <- 0
-      out <- z * ph + (1 - z) * pl
-    } else if (fractional == "constant force") {
-      out <- pl * pxt(object = object, x = (x + floor(t)),t = 1) ^ z # fix on this line
-    } else if (fractional == "hyperbolic") {
-      out <-
-        pl * pxt(object = object, x = (x + floor(t)),t = 1) / (1 - (1 - z) * qxt(
-          object = object, x = (x + floor(t)),t = 1
-        )) # Kevin Owens: fix on this line
-    }
-  }
-  else # x + t is less that or equal to omega
-    #fractional ages
-  {
-    if ((t %% 1) == 0)
-      out <-
-        object@lx[which(object@x == t + x)] / object@lx[which(object@x == x)]
-    else {
-      z <- t %% 1 #the fraction of year
-      #linearly interpolates if fractional age
-      pl <-
-        object@lx[which(object@x == floor(t + x))] / object@lx[which(object@x ==
-                                                                       x)] # Kevin Owens: fix on this line, moving it out of the linear if statement so it can be used in other assumptions
-      if (fractional == "linear") {
-        ph <-
-          object@lx[which(object@x == ceiling(t + x))] / object@lx[which(object@x ==
-                                                                           x)]
-        out <- z * ph + (1 - z) * pl
-      } else if (fractional == "constant force") {
-        out <- pl * pxt(object = object, x = (x + floor(t)),t = 1) ^ z # fix on this line
-      } else if (fractional == "hyperbolic") {
-        out <-
-          pl * pxt(object = object, x = (x + floor(t)),t = 1) / (1 - (1 - z) * qxt(
-            object = object, x = (x + floor(t)),t = 1
-          )) # Kevin Owens: fix on this line
-      }
-    }
-  }
-
-  #  }
+  num <- .interpolate(object, x + t, type = fractional)
+  den <- .interpolate(object, x, type = fractional)
+  out <- num / den
   return(out)
 }
 
