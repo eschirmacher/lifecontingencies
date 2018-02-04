@@ -1,3 +1,6 @@
 *.bbl
 *.blg
 *.gz
+*.pdf
+*.tex
+*.log
